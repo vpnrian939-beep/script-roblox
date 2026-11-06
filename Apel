@@ -1,0 +1,1261 @@
+--========================================================
+-- MAU CONTROL | AUTO RESTOCK + AUTO APEL V10
+-- AUTO RESTOCK | AUTO APEL 12 BOX
+-- ONE GUI | DRAGGABLE | MINI | CLOSE
+--========================================================
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+local GREEN = Color3.fromRGB(45,170,80)
+local DARK_GREEN = Color3.fromRGB(25,120,55)
+local OFF_COLOR = Color3.fromRGB(75,75,75)
+local DARK = Color3.fromRGB(25,25,25)
+local WHITE = Color3.fromRGB(245,245,245)
+
+local F = {
+    Restock = false,
+    Apel = false
+}
+
+local running = false
+local busy = false
+
+--========================================================
+-- GUI PARENT / CLEANUP
+--========================================================
+
+local GuiParent = CoreGui
+
+pcall(function()
+    if typeof(gethui) == "function" then
+        GuiParent = gethui()
+    end
+end)
+
+for _,parent in ipairs({GuiParent,CoreGui,PlayerGui}) do
+    pcall(function()
+        local old = parent:FindFirstChild("MAU_CONTROL_COMBINED")
+        if old then
+            old:Destroy()
+        end
+    end)
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MAU_CONTROL_COMBINED"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.DisplayOrder = 999999
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+ScreenGui.Parent = GuiParent
+
+local function New(className,props,parent)
+    local obj = Instance.new(className)
+
+    for key,value in pairs(props or {}) do
+        obj[key] = value
+    end
+
+    obj.Parent = parent
+    return obj
+end
+
+local function Round(obj,radius)
+    New("UICorner",{
+        CornerRadius = UDim.new(0,radius or 8)
+    },obj)
+end
+
+local function MakeDraggable(obj,handle)
+    local dragging = false
+    local dragStart
+    local startPos
+    local dragInput
+
+    handle = handle or obj
+
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+
+            dragging = true
+            dragStart = input.Position
+            startPos = obj.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if dragging and input == dragInput then
+            local delta = input.Position - dragStart
+
+            obj.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+--========================================================
+-- MAIN GUI
+--========================================================
+
+local Main = New("Frame",{
+    Size = UDim2.new(0,285,0,260),
+    Position = UDim2.new(0.5,-142,0.5,-130),
+    BackgroundColor3 = DARK,
+    BorderSizePixel = 0,
+    ClipsDescendants = true
+},ScreenGui)
+Round(Main,12)
+
+New("UIStroke",{
+    Color = GREEN,
+    Thickness = 2
+},Main)
+
+local Header = New("Frame",{
+    Size = UDim2.new(1,0,0,48),
+    BackgroundColor3 = DARK_GREEN,
+    BorderSizePixel = 0
+},Main)
+Round(Header,10)
+
+New("Frame",{
+    Size = UDim2.new(1,0,0,12),
+    Position = UDim2.new(0,0,1,-12),
+    BackgroundColor3 = DARK_GREEN,
+    BorderSizePixel = 0
+},Header)
+
+New("TextLabel",{
+    Size = UDim2.new(0,40,0,40),
+    Position = UDim2.new(0,5,0,4),
+    BackgroundTransparency = 1,
+    Text = "🍎",
+    TextSize = 27
+},Header)
+
+New("TextLabel",{
+    Size = UDim2.new(1,-110,1,0),
+    Position = UDim2.new(0,45,0,0),
+    BackgroundTransparency = 1,
+    Text = "MAU CONTROL",
+    TextColor3 = WHITE,
+    TextSize = 17,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left
+},Header)
+
+local MiniButton = New("TextButton",{
+    Size = UDim2.new(0,32,0,30),
+    Position = UDim2.new(1,-70,0,9),
+    BackgroundColor3 = GREEN,
+    Text = "_",
+    TextColor3 = WHITE,
+    TextSize = 20,
+    BorderSizePixel = 0
+},Header)
+Round(MiniButton,6)
+
+local CloseButton = New("TextButton",{
+    Size = UDim2.new(0,28,0,30),
+    Position = UDim2.new(1,-34,0,9),
+    BackgroundColor3 = Color3.fromRGB(180,55,55),
+    Text = "×",
+    TextColor3 = WHITE,
+    TextSize = 20,
+    BorderSizePixel = 0
+},Header)
+Round(CloseButton,6)
+
+MakeDraggable(Main,Header)
+
+local Mini = New("TextButton",{
+    Size = UDim2.new(0,48,0,48),
+    Position = UDim2.new(0,15,0.45,0),
+    BackgroundColor3 = GREEN,
+    Text = "🍎",
+    TextSize = 27,
+    Visible = false,
+    BorderSizePixel = 0
+},ScreenGui)
+Round(Mini,24)
+MakeDraggable(Mini)
+
+MiniButton.Activated:Connect(function()
+    Main.Visible = false
+    Mini.Visible = true
+end)
+
+Mini.Activated:Connect(function()
+    Main.Visible = true
+    Mini.Visible = false
+end)
+
+local Scroll = New("ScrollingFrame",{
+    Position = UDim2.new(0,8,0,55),
+    Size = UDim2.new(1,-16,1,-64),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = GREEN,
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    CanvasSize = UDim2.new(0,0,0,0)
+},Main)
+
+New("UIListLayout",{
+    Padding = UDim.new(0,8),
+    SortOrder = Enum.SortOrder.LayoutOrder
+},Scroll)
+
+New("UIPadding",{
+    PaddingTop = UDim.new(0,2),
+    PaddingBottom = UDim.new(0,8),
+    PaddingLeft = UDim.new(0,2),
+    PaddingRight = UDim.new(0,2)
+},Scroll)
+
+local StatusLabels = {}
+local ToggleButtons = {}
+
+local function SetStatus(key,message)
+    if StatusLabels[key] and StatusLabels[key].Parent then
+        StatusLabels[key].Text = "Status: "..tostring(message)
+    end
+end
+
+local function CreateCard(key,title,icon,height)
+    local card = New("Frame",{
+        Name = key.."Card",
+        Size = UDim2.new(1,-4,0,height),
+        BackgroundColor3 = Color3.fromRGB(38,38,38),
+        BorderSizePixel = 0
+    },Scroll)
+    Round(card,9)
+
+    New("UIStroke",{
+        Color = Color3.fromRGB(65,95,70),
+        Thickness = 1
+    },card)
+
+    New("TextLabel",{
+        Size = UDim2.new(1,-100,0,30),
+        Position = UDim2.new(0,9,0,5),
+        BackgroundTransparency = 1,
+        Text = icon.." "..title,
+        TextColor3 = WHITE,
+        TextSize = 14,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left
+    },card)
+
+    local toggle = New("TextButton",{
+        Size = UDim2.new(0,78,0,29),
+        Position = UDim2.new(1,-86,0,5),
+        BackgroundColor3 = OFF_COLOR,
+        Text = "OFF",
+        TextColor3 = WHITE,
+        TextSize = 13,
+        Font = Enum.Font.GothamBold,
+        BorderSizePixel = 0
+    },card)
+    Round(toggle,7)
+
+    local status = New("TextLabel",{
+        Size = UDim2.new(1,-16,0,45),
+        Position = UDim2.new(0,8,0,39),
+        BackgroundTransparency = 1,
+        Text = "Status: Siap",
+        TextColor3 = Color3.fromRGB(205,205,205),
+        TextSize = 11,
+        Font = Enum.Font.Gotham,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        TextWrapped = true
+    },card)
+
+    StatusLabels[key] = status
+    ToggleButtons[key] = toggle
+
+    return card,toggle
+end
+
+local RestockCard,RestockToggle =
+    CreateCard("Restock","AUTO RESTOCK","📦",85)
+
+local ApelCard,ApelToggle =
+    CreateCard("Apel","AUTO APEL V10","🍎",90)
+
+local function UpdateToggle(key)
+    local button = ToggleButtons[key]
+    if not button then return end
+
+    button.Text = F[key] and "ON" or "OFF"
+    button.BackgroundColor3 = F[key] and GREEN or OFF_COLOR
+end
+
+--========================================================
+-- AUTO RESTOCK / RAK KIOS
+-- MEKANISME ASLI DIPERTAHANKAN
+--========================================================
+
+local function GetText(object)
+    local ok,value = pcall(function()
+        return object.Text
+    end)
+
+    return ok and typeof(value) == "string" and value or ""
+end
+
+local function IsVisible(object)
+    if not object or not object:IsA("GuiObject") then
+        return false
+    end
+
+    local current = object
+
+    while current and current ~= PlayerGui do
+        if current:IsA("GuiObject") and not current.Visible then
+            return false
+        end
+
+        current = current.Parent
+    end
+
+    return true
+end
+
+local function FindButton(object)
+    local current = object
+
+    for _ = 1,10 do
+        if not current then break end
+        if current:IsA("GuiButton") then return current end
+        current = current.Parent
+    end
+
+    return nil
+end
+
+local function FireButton(button)
+    if not button or not button.Parent then
+        return false
+    end
+
+    local fired = false
+
+    pcall(function()
+        if typeof(firesignal) == "function" then
+            firesignal(button.Activated)
+            fired = true
+        end
+    end)
+
+    if not fired then
+        pcall(function()
+            button:Activate()
+            fired = true
+        end)
+    end
+
+    return fired
+end
+
+local function GetRakGui()
+    return PlayerGui:FindFirstChild("RakGui")
+end
+
+local function GetRakMainFrame()
+    local gui = GetRakGui()
+    if not gui then return nil end
+
+    if gui.Name == "MainFrame" then
+        return gui
+    end
+
+    return gui:FindFirstChild("MainFrame",true)
+end
+
+local function RakTerbuka()
+    local frame = GetRakMainFrame()
+
+    return frame ~= nil
+        and frame:IsA("GuiObject")
+        and frame.Visible
+end
+
+local function FindRakController()
+    if typeof(getgc) ~= "function" then
+        return nil,nil
+    end
+
+    local ok,objects = pcall(function()
+        return getgc(true)
+    end)
+
+    if not ok or type(objects) ~= "table" then
+        return nil,nil
+    end
+
+    local gui = GetRakGui()
+    local frame = GetRakMainFrame()
+
+    for _,object in ipairs(objects) do
+        if type(object) == "table" then
+            local hasGui = false
+            local openFunction = nil
+
+            for key,value in pairs(object) do
+                if gui and value == gui then
+                    hasGui = true
+                end
+
+                if frame and value == frame then
+                    hasGui = true
+                end
+
+                if key == "Open" and type(value) == "function" then
+                    openFunction = value
+                end
+            end
+
+            if hasGui and openFunction then
+                return object,openFunction
+            end
+        end
+    end
+
+    return nil,nil
+end
+
+local function TryOpenController(controller,openFunction)
+    if not openFunction then return false end
+
+    pcall(function()
+        openFunction()
+    end)
+
+    task.wait(0.2)
+
+    if RakTerbuka() then
+        return true
+    end
+
+    if controller then
+        pcall(function()
+            openFunction(controller)
+        end)
+    end
+
+    task.wait(0.3)
+
+    return RakTerbuka()
+end
+
+local function TryRakButtons(container)
+    if not container then return false end
+
+    local names = {
+        rak = true,
+        rakkios = true,
+        rak_kios = true
+    }
+
+    for _,object in ipairs(container:GetDescendants()) do
+        if object:IsA("GuiButton") then
+            local name = string.lower(object.Name)
+
+            if names[name] and IsVisible(object) then
+                FireButton(object)
+                task.wait(0.35)
+
+                if RakTerbuka() then
+                    return true
+                end
+            end
+        end
+    end
+
+    return false
+end
+
+local function OpenRak()
+    if RakTerbuka() then
+        return true
+    end
+
+    SetStatus("Restock","Mencari cara membuka Rak Kios")
+
+    local controller,openFunction = FindRakController()
+
+    if controller and openFunction then
+        if TryOpenController(controller,openFunction) then
+            SetStatus("Restock","Rak berhasil dibuka")
+            return true
+        end
+    end
+
+    local gui = GetRakGui()
+
+    if gui and TryRakButtons(gui) then
+        SetStatus("Restock","Rak berhasil dibuka")
+        return true
+    end
+
+    if TryRakButtons(PlayerGui) then
+        SetStatus("Restock","Rak berhasil dibuka")
+        return true
+    end
+
+    task.wait(0.25)
+
+    controller,openFunction = FindRakController()
+
+    if controller and openFunction then
+        if TryOpenController(controller,openFunction) then
+            SetStatus("Restock","Rak berhasil dibuka")
+            return true
+        end
+    end
+
+    return RakTerbuka()
+end
+
+local function FindIsi()
+    local gui = GetRakGui()
+    if not gui then return nil end
+
+    for _,object in ipairs(gui:GetDescendants()) do
+        if object:IsA("GuiButton") and IsVisible(object) then
+            local name = string.lower(object.Name)
+
+            if name == "isi" then
+                return object
+            end
+        end
+    end
+
+    for _,object in ipairs(gui:GetDescendants()) do
+        if object:IsA("GuiObject") and IsVisible(object) then
+            local text = string.lower(GetText(object))
+
+            if string.match(text,"^%s*isi%s*%+")
+            or string.match(text,"^%s*isi%s*$") then
+                local button = FindButton(object)
+
+                if button and IsVisible(button) then
+                    return button
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+local function ProcessRak()
+    if not F.Restock then return end
+
+    if not RakTerbuka() then
+        SetStatus("Restock","Membuka Rak Kios")
+
+        local opened = OpenRak()
+
+        if not opened then
+            if not GetRakGui() then
+                SetStatus("Restock","RakGui belum muncul; mencoba lagi")
+            else
+                SetStatus("Restock","Rak belum terbuka; mencoba lagi")
+            end
+
+            return
+        end
+    end
+
+    if not RakTerbuka() then
+        SetStatus("Restock","Menunggu Rak terbuka")
+        return
+    end
+
+    local button = FindIsi()
+
+    if not button then
+        SetStatus("Restock","Rak terbuka, tombol Isi belum ditemukan")
+        return
+    end
+
+    if FireButton(button) then
+        SetStatus("Restock","Input tombol Isi dikirim")
+    else
+        SetStatus("Restock","Gagal mengaktifkan tombol Isi")
+    end
+
+    task.wait(0.8)
+end
+
+task.spawn(function()
+    while ScreenGui.Parent do
+        if F.Restock then
+            local ok,err = pcall(ProcessRak)
+
+            if not ok then
+                SetStatus("Restock","Error: "..tostring(err))
+            end
+
+            task.wait(0.8)
+        else
+            task.wait(0.25)
+        end
+    end
+end)
+
+--==================================================
+-- AUTO APEL V10
+-- 12 BOX | TANAM | SIRAM | PANEN REMOTE 3X
+--==================================================
+
+--==================================================
+-- CARI TOOL
+--==================================================
+
+local function findTool(keyword)
+    local function search(container)
+        if not container then return nil end
+
+        for _,tool in ipairs(container:GetChildren()) do
+            if tool:IsA("Tool") then
+                local name = tool.Name:gsub("%s+",""):lower()
+
+                if name:find(
+                    keyword:gsub("%s+",""):lower(),
+                    1,
+                    true
+                ) then
+                    return tool
+                end
+            end
+        end
+    end
+
+    return search(Player.Backpack)
+        or search(Player.Character)
+end
+
+local function getHumanoid()
+    local character = Player.Character
+    return character and character:FindFirstChildOfClass("Humanoid")
+end
+
+local function equip(tool)
+    local humanoid = getHumanoid()
+    if not humanoid or not tool then return false end
+
+    humanoid:EquipTool(tool)
+    task.wait(0.7)
+
+    return running and tool.Parent == Player.Character
+end
+
+--==================================================
+-- POSISI LAHAN
+--==================================================
+
+local function getLahan(i)
+    return workspace:FindFirstChild("LahanBox"..i,true)
+end
+
+local function getPosition(object)
+    if not object then return nil end
+
+    if object:IsA("BasePart") then
+        return object.Position
+    elseif object:IsA("Model") then
+        return object:GetPivot().Position
+    end
+
+    return nil
+end
+
+local function getPlantPosition(object)
+    if object:IsA("BasePart") then
+        return object.Position + Vector3.new(0,object.Size.Y/2,0)
+
+    elseif object:IsA("Model") then
+        local cf,size = object:GetBoundingBox()
+        return cf.Position + Vector3.new(0,size.Y/2,0)
+    end
+end
+
+--==================================================
+-- GERAK TANAM DAN SIRAM
+--==================================================
+
+local function moveTo(position,boxNumber)
+    local humanoid = getHumanoid()
+    local character = Player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+
+    if not humanoid or not root then
+        SetStatus("Apel","Karakter tidak ditemukan!")
+        return false
+    end
+
+    for attempt = 1,3 do
+        if not running then return false end
+
+        humanoid:MoveTo(position)
+
+        local start = os.clock()
+
+        while running and os.clock()-start < 12 do
+            character = Player.Character
+            root = character and character:FindFirstChild("HumanoidRootPart")
+
+            if not root then return false end
+
+            if (root.Position-position).Magnitude <= 9 then
+                return true
+            end
+
+            task.wait(0.15)
+        end
+
+        SetStatus("Apel","Menuju Box "..boxNumber..
+            " ("..attempt.."/3)")
+
+        task.wait(0.5)
+    end
+
+    SetStatus("Apel","Gagal mencapai Box "..boxNumber.."!")
+    return false
+end
+
+--==================================================
+-- GERAK KHUSUS PANEN
+--==================================================
+
+local function moveToHarvest(position,boxNumber)
+    for attempt = 1,5 do
+        if not running then return false end
+
+        local character = Player.Character
+        local humanoid = getHumanoid()
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+
+        if not humanoid or not root then
+            SetStatus("Apel","Karakter tidak ditemukan!")
+            return false
+        end
+
+        humanoid:MoveTo(position)
+
+        local start = os.clock()
+        local arrivedAt = nil
+
+        while running and os.clock()-start < 12 do
+            character = Player.Character
+            root = character and character:FindFirstChild("HumanoidRootPart")
+
+            if not root then return false end
+
+            local offset = root.Position-position
+            local distance = Vector2.new(offset.X,offset.Z).Magnitude
+
+            if distance <= 5 then
+                if not arrivedAt then
+                    arrivedAt = os.clock()
+                    SetStatus("Apel","Tiba di Box "..boxNumber..
+                        " - Diam 1 detik...")
+                end
+
+                if os.clock()-arrivedAt >= 1 then
+                    return true
+                end
+            else
+                arrivedAt = nil
+            end
+
+            task.wait(0.1)
+        end
+
+        SetStatus("Apel","Mendekati Box "..boxNumber..
+            " ("..attempt.."/5)")
+    end
+
+    SetStatus("Apel","Gagal mendekati Box "..boxNumber.."!")
+    return false
+end
+
+--==================================================
+-- REMOTE TANAM
+--==================================================
+
+local function getTanamRemote()
+    local module = ReplicatedStorage:WaitForChild("RemoteRegistry",15)
+    if not module then return nil end
+
+    local success,registry = pcall(require,module)
+    if not success then return nil end
+
+    local ok,folder = pcall(function()
+        return registry.folder("Remotes")
+    end)
+
+    if not ok or not folder then return nil end
+
+    return folder:WaitForChild("Tanam",15)
+end
+
+--==================================================
+-- REMOTE PANEN
+--==================================================
+
+local function getPanenRemote()
+    local module = ReplicatedStorage:WaitForChild("RemoteRegistry",15)
+    if not module then return nil end
+
+    local success,registry = pcall(require,module)
+
+    if not success then
+        SetStatus("Apel","Gagal membaca RemoteRegistry!")
+        return nil
+    end
+
+    local ok,folder = pcall(function()
+        return registry.folder("Remotes")
+    end)
+
+    if not ok or not folder then
+        SetStatus("Apel","Folder Remotes tidak ditemukan!")
+        return nil
+    end
+
+    return folder:WaitForChild("Panen",30)
+end
+
+--==================================================
+-- CARI TANAMAN DI WORKSPACE.PLOT
+--==================================================
+
+local function getPlotFolder()
+    return workspace:FindFirstChild("Plot")
+end
+
+local function getHarvestBase(boxPosition,usedBases)
+    local plot = getPlotFolder()
+
+    if not plot then
+        SetStatus("Apel","Workspace.Plot tidak ditemukan!")
+        return nil
+    end
+
+    local nearest = nil
+    local nearestDistance = math.huge
+
+    for _,object in ipairs(plot:GetDescendants()) do
+        if object:IsA("BasePart")
+            and object:GetAttribute("PlantKey")
+            and object:GetAttribute("OwnerId") == Player.UserId
+            and not usedBases[object] then
+
+            local offset = object.Position-boxPosition
+            local distance = Vector2.new(offset.X,offset.Z).Magnitude
+
+            if distance < nearestDistance then
+                nearestDistance = distance
+                nearest = object
+            end
+        end
+    end
+
+    if nearest and nearestDistance <= 18 then
+        usedBases[nearest] = true
+        return nearest
+    end
+
+    return nil
+end
+
+--==================================================
+-- EKSEKUSI PANEN REMOTE 3X
+--==================================================
+
+local harvestCooldown = {}
+
+local function remoteHarvest(object,boxNumber)
+    local remote = getPanenRemote()
+
+    if not remote then
+        SetStatus("Apel","Remote Panen tidak ditemukan!")
+        return false
+    end
+
+    if not object or not object.Parent then
+        SetStatus("Apel","Tanaman Box "..boxNumber.." hilang!")
+        return false
+    end
+
+    if object:GetAttribute("Harvested") then
+        SetStatus("Apel","Box "..boxNumber.." sudah dipanen!")
+        return true
+    end
+
+    if not object:GetAttribute("Ready") then
+        SetStatus("Apel","Box "..boxNumber.." belum siap!")
+        return false
+    end
+
+    for attempt = 1,3 do
+        if not running then return false end
+
+        if not object.Parent then
+            return false
+        end
+
+        if object:GetAttribute("Harvested") then
+            SetStatus("Apel","Box "..boxNumber.." berhasil dipanen!")
+            return true
+        end
+
+        if not object:GetAttribute("Ready") then
+            SetStatus("Apel","Tanaman tidak lagi siap!")
+            return false
+        end
+
+        local now = os.clock()
+        local nextAllowed = harvestCooldown[object] or 0
+
+        if now < nextAllowed then
+            task.wait(nextAllowed-now)
+        end
+
+        if not running then return false end
+
+        if object.Parent
+            and object:GetAttribute("Ready")
+            and not object:GetAttribute("Harvested") then
+
+            harvestCooldown[object] = os.clock()+0.5
+
+            remote:FireServer(object)
+
+            SetStatus("Apel","Remote Panen Box "..
+                boxNumber.." ("..attempt.."/3)")
+        end
+
+        task.wait(0.55)
+    end
+
+    if object.Parent and object:GetAttribute("Harvested") then
+        SetStatus("Apel","Box "..boxNumber.." berhasil dipanen!")
+        return true
+    end
+
+    SetStatus("Apel","Permintaan panen Box "..boxNumber.." terkirim")
+
+    return true
+end
+
+--==================================================
+-- SIKLUS UTAMA AUTO APEL
+--==================================================
+
+local function runCycle()
+
+    -- PERIKSA 12 BOX
+    local plots = {}
+
+    for i = 1,12 do
+        local lahan = getLahan(i)
+
+        if not lahan then
+            SetStatus("Apel","LahanBox "..i.." tidak ditemukan!")
+            return false
+        end
+
+        local position = getPosition(lahan)
+        local plantPosition = getPlantPosition(lahan)
+
+        if not position or not plantPosition then
+            SetStatus("Apel","Posisi Box "..i.." tidak ditemukan!")
+            return false
+        end
+
+        plots[i] = {
+            object = lahan,
+            position = position,
+            plantPosition = plantPosition,
+            index = i
+        }
+    end
+
+    --==================================================
+    -- TANAM 12 BOX
+    --==================================================
+
+    SetStatus("Apel","Mencari bibit apel...")
+
+    local seed = findTool("BibitApel")
+    local tanamRemote = getTanamRemote()
+
+    if not seed or not tanamRemote then
+        SetStatus("Apel","Bibit atau Remote Tanam tidak ditemukan!")
+        return false
+    end
+
+    if not equip(seed) then return false end
+
+    for i = 1,12 do
+        if not running then return false end
+
+        local crop = plots[i]
+
+        SetStatus("Apel","Menanam Box "..i.." / 12")
+
+        if not moveTo(crop.position,i) then
+            return false
+        end
+
+        tanamRemote:FireServer(crop.plantPosition)
+
+        task.wait(2)
+    end
+
+    --==================================================
+    -- SIRAM 12 BOX
+    --==================================================
+
+    SetStatus("Apel","Mencari penyiram...")
+
+    local sprinkler = findTool("PenyiramTanaman")
+
+    if not sprinkler then
+        SetStatus("Apel","Penyiram tidak ditemukan!")
+        return false
+    end
+
+    if not equip(sprinkler) then return false end
+
+    for i = 1,12 do
+        if not running then
+            sprinkler:Deactivate()
+            return false
+        end
+
+        local crop = plots[i]
+
+        SetStatus("Apel","Menyiram Box "..i.." / 12")
+
+        if not moveTo(crop.position,i) then
+            sprinkler:Deactivate()
+            return false
+        end
+
+        sprinkler:Activate()
+        task.wait(4)
+        sprinkler:Deactivate()
+
+        task.wait(2)
+    end
+
+    --==================================================
+    -- TUNGGU 130 DETIK
+    --==================================================
+
+    for remaining = 130,1,-1 do
+        if not running then return false end
+
+        SetStatus("Apel","Menunggu apel: "..remaining.." detik")
+        task.wait(1)
+    end
+
+    --==================================================
+    -- KOSONGKAN TANGAN
+    --==================================================
+
+    local humanoid = getHumanoid()
+
+    if humanoid then
+        humanoid:UnequipTools()
+    end
+
+    task.wait(1)
+
+    --==================================================
+    -- CARI 12 TANAMAN UNTUK PANEN
+    --==================================================
+
+    SetStatus("Apel","Mencari tanaman di Plot...")
+
+    local usedBases = {}
+    local harvestTargets = {}
+
+    for i = 1,12 do
+        if not running then return false end
+
+        local crop = plots[i]
+
+        local target = getHarvestBase(
+            crop.position,
+            usedBases
+        )
+
+        if not target then
+            SetStatus("Apel","Tanaman Box "..i.." tidak ditemukan!")
+            return false
+        end
+
+        harvestTargets[i] = target
+    end
+
+    --==================================================
+    -- PANEN 12 BOX MENGGUNAKAN REMOTE
+    --==================================================
+
+    for i = 1,12 do
+        if not running then return false end
+
+        local target = harvestTargets[i]
+
+        if not target or not target.Parent then
+            SetStatus("Apel","Target Box "..i.." hilang!")
+            return false
+        end
+
+        SetStatus("Apel","Menuju Box "..i.." untuk panen")
+
+        if not moveToHarvest(target.Position,i) then
+            return false
+        end
+
+        SetStatus("Apel","Panen Box "..i.." / 12")
+
+        if not remoteHarvest(target,i) then
+            SetStatus("Apel","Panen Box "..i.." gagal!")
+            return false
+        end
+
+        task.wait(1)
+    end
+
+    return true
+end
+
+--==================================================
+-- LOOP AUTO APEL
+--==================================================
+
+local function StartApel()
+    if busy then return end
+
+    running = true
+    busy = true
+
+    task.spawn(function()
+        while running and ScreenGui.Parent do
+            local success,result = pcall(runCycle)
+
+            if not success then
+                SetStatus("Apel","Error: "..tostring(result))
+                running = false
+                break
+            end
+
+            if result == false then
+                running = false
+                break
+            end
+
+            SetStatus("Apel","12 Box selesai! Mengulang...")
+            task.wait(2)
+        end
+
+        busy = false
+
+        if ScreenGui.Parent then
+            F.Apel = false
+            UpdateToggle("Apel")
+
+            if not running then
+                SetStatus("Apel","Mati")
+            end
+        end
+    end)
+end
+
+--==================================================
+-- TOGGLES
+--==================================================
+
+RestockToggle.Activated:Connect(function()
+    F.Restock = not F.Restock
+    UpdateToggle("Restock")
+
+    SetStatus(
+        "Restock",
+        F.Restock and "Auto Restock aktif" or "Nonaktif"
+    )
+end)
+
+ApelToggle.Activated:Connect(function()
+    if running then
+        running = false
+        F.Apel = false
+        UpdateToggle("Apel")
+        SetStatus("Apel","Menghentikan...")
+        return
+    end
+
+    if busy then return end
+
+    F.Apel = true
+    UpdateToggle("Apel")
+    SetStatus("Apel","Memulai Auto Apel...")
+    StartApel()
+end)
+
+--==================================================
+-- CLOSE
+--==================================================
+
+CloseButton.Activated:Connect(function()
+    F.Restock = false
+    F.Apel = false
+    running = false
+
+    ScreenGui:Destroy()
+end)
+
+--==================================================
+-- INITIAL STATE
+--==================================================
+
+UpdateToggle("Restock")
+UpdateToggle("Apel")
+
+SetStatus("Restock","Siap")
+SetStatus("Apel","Siap")
+
+print("MAU CONTROL | AUTO RESTOCK + AUTO APEL V10")
