@@ -1,0 +1,1509 @@
+--========================================================
+-- MAU CONTROL V23
+-- AUTO RESTOCK
+-- AUTO JAGUNG 24 TANAMAN DI SATU TITIK LAHAN1
+-- TELEPORT | TANAM 24X | SIRAM 3 DETIK
+-- TUNGGU 30 DETIK | PANEN 24X
+-- AUTO BELI BIBIT JAGUNG
+-- AUTO PAKAN <20/60 + AUTO SUSU >=50/60
+--========================================================
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local RS = game:GetService("ReplicatedStorage")
+local Player = Players.LocalPlayer
+
+local GREEN = Color3.fromRGB(45,170,80)
+local DARK_GREEN = Color3.fromRGB(25,120,55)
+local DARK = Color3.fromRGB(25,25,25)
+local WHITE = Color3.fromRGB(245,245,245)
+local OFF = Color3.fromRGB(75,75,75)
+
+local BUY_AMOUNT = 120
+local MIN_SEED_STOCK = 10000
+local MAX_PAKAN = 60
+local MIN_PAKAN = 20
+local MAX_SUSU = 60
+local MIN_SUSU = 50
+local MAX_PLANTS = 24
+
+local WATER_DURATION = 3
+local CORN_GROW_TIME = 30
+
+local F = {
+    Restock = false,
+    Jagung = false,
+    Beli = false,
+    Pakan = false,
+    Susu = false
+}
+
+local alive = true
+local running = false
+local busy = false
+local buyBusy = false
+local pakanBusy = false
+local susuBusy = false
+local cowTeleporting = false
+
+--========================================================
+-- GUI
+--========================================================
+
+local GuiParent = CoreGui
+
+pcall(function()
+    if typeof(gethui) == "function" then
+        GuiParent = gethui()
+    end
+end)
+
+pcall(function()
+    local old = GuiParent:FindFirstChild("MAU_CONTROL_COMBINED")
+    if old then old:Destroy() end
+end)
+
+local function New(class,props,parent)
+    local obj = Instance.new(class)
+    for k,v in pairs(props or {}) do
+        obj[k] = v
+    end
+    obj.Parent = parent
+    return obj
+end
+
+local function Corner(obj,r)
+    New("UICorner",{CornerRadius=UDim.new(0,r or 8)},obj)
+end
+
+local function Draggable(frame,handle)
+    local dragging = false
+    local startInput,startPos,dragInput
+
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            startInput = input.Position
+            startPos = frame.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if dragging and input == dragInput then
+            local delta = input.Position-startInput
+            frame.Position = UDim2.new(
+                startPos.X.Scale,startPos.X.Offset+delta.X,
+                startPos.Y.Scale,startPos.Y.Offset+delta.Y
+            )
+        end
+    end)
+end
+
+local ScreenGui = New("ScreenGui",{
+    Name="MAU_CONTROL_COMBINED",
+    ResetOnSpawn=false,
+    IgnoreGuiInset=true,
+    DisplayOrder=999999
+},GuiParent)
+
+local Main = New("Frame",{
+    Size=UDim2.new(0,285,0,355),
+    Position=UDim2.new(0.5,-142,0.5,-177),
+    BackgroundColor3=DARK,
+    BorderSizePixel=0,
+    ClipsDescendants=true
+},ScreenGui)
+Corner(Main,12)
+
+New("UIStroke",{Color=GREEN,Thickness=2},Main)
+
+local Header = New("Frame",{
+    Size=UDim2.new(1,0,0,48),
+    BackgroundColor3=DARK_GREEN,
+    BorderSizePixel=0
+},Main)
+Corner(Header,10)
+
+New("TextLabel",{
+    Size=UDim2.new(1,-100,1,0),
+    Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1,
+    Text="🌽 MAU CONTROL V23",
+    TextColor3=WHITE,
+    TextSize=16,
+    Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Left
+},Header)
+
+local MiniButton = New("TextButton",{
+    Size=UDim2.new(0,32,0,30),
+    Position=UDim2.new(1,-70,0,9),
+    BackgroundColor3=GREEN,
+    Text="_",
+    TextColor3=WHITE,
+    TextSize=20,
+    BorderSizePixel=0
+},Header)
+Corner(MiniButton,6)
+
+local CloseButton = New("TextButton",{
+    Size=UDim2.new(0,28,0,30),
+    Position=UDim2.new(1,-34,0,9),
+    BackgroundColor3=Color3.fromRGB(180,55,55),
+    Text="×",
+    TextColor3=WHITE,
+    TextSize=20,
+    BorderSizePixel=0
+},Header)
+Corner(CloseButton,6)
+
+Draggable(Main,Header)
+
+local Mini = New("TextButton",{
+    Size=UDim2.new(0,48,0,48),
+    Position=UDim2.new(0,15,0.45,0),
+    BackgroundColor3=GREEN,
+    Text="🌽",
+    TextSize=27,
+    Visible=false,
+    BorderSizePixel=0
+},ScreenGui)
+Corner(Mini,24)
+Draggable(Mini,Mini)
+
+MiniButton.Activated:Connect(function()
+    Main.Visible=false
+    Mini.Visible=true
+end)
+
+Mini.Activated:Connect(function()
+    Main.Visible=true
+    Mini.Visible=false
+end)
+
+local Scroll = New("ScrollingFrame",{
+    Position=UDim2.new(0,8,0,55),
+    Size=UDim2.new(1,-16,1,-64),
+    BackgroundTransparency=1,
+    BorderSizePixel=0,
+    ScrollBarThickness=4,
+    ScrollBarImageColor3=GREEN,
+    AutomaticCanvasSize=Enum.AutomaticSize.Y,
+    CanvasSize=UDim2.new(0,0,0,0)
+},Main)
+
+New("UIListLayout",{
+    Padding=UDim.new(0,8),
+    SortOrder=Enum.SortOrder.LayoutOrder
+},Scroll)
+
+New("UIPadding",{
+    PaddingTop=UDim.new(0,2),
+    PaddingBottom=UDim.new(0,8),
+    PaddingLeft=UDim.new(0,2),
+    PaddingRight=UDim.new(0,2)
+},Scroll)
+
+local StatusLabels = {}
+local ToggleButtons = {}
+
+local function SetStatus(key,msg)
+    if StatusLabels[key] then
+        StatusLabels[key].Text="Status: "..tostring(msg)
+    end
+end
+
+local function CreateCard(key,title,icon)
+    local card=New("Frame",{
+        Size=UDim2.new(1,-4,0,85),
+        BackgroundColor3=Color3.fromRGB(38,38,38),
+        BorderSizePixel=0
+    },Scroll)
+    Corner(card,9)
+
+    New("UIStroke",{
+        Color=Color3.fromRGB(65,95,70),
+        Thickness=1
+    },card)
+
+    New("TextLabel",{
+        Size=UDim2.new(1,-100,0,30),
+        Position=UDim2.new(0,9,0,5),
+        BackgroundTransparency=1,
+        Text=icon.." "..title,
+        TextColor3=WHITE,
+        TextSize=13,
+        Font=Enum.Font.GothamBold,
+        TextXAlignment=Enum.TextXAlignment.Left
+    },card)
+
+    local toggle=New("TextButton",{
+        Size=UDim2.new(0,78,0,29),
+        Position=UDim2.new(1,-86,0,5),
+        BackgroundColor3=OFF,
+        Text="OFF",
+        TextColor3=WHITE,
+        TextSize=13,
+        Font=Enum.Font.GothamBold,
+        BorderSizePixel=0
+    },card)
+    Corner(toggle,7)
+
+    local status=New("TextLabel",{
+        Size=UDim2.new(1,-16,0,40),
+        Position=UDim2.new(0,8,0,39),
+        BackgroundTransparency=1,
+        Text="Status: Siap",
+        TextColor3=Color3.fromRGB(205,205,205),
+        TextSize=11,
+        Font=Enum.Font.Gotham,
+        TextXAlignment=Enum.TextXAlignment.Left,
+        TextYAlignment=Enum.TextYAlignment.Top,
+        TextWrapped=true
+    },card)
+
+    StatusLabels[key]=status
+    ToggleButtons[key]=toggle
+    return toggle
+end
+
+local RestockToggle=CreateCard("Restock","AUTO RESTOCK","📦")
+local JagungToggle=CreateCard("Jagung","AUTO JAGUNG 24 TANAMAN","🌽")
+local BeliToggle=CreateCard("Beli","AUTO BELI BIBIT JAGUNG","🛒")
+local PakanToggle=CreateCard("Pakan","AUTO BERI MAKAN SAPI","🌽")
+local SusuToggle=CreateCard("Susu","AUTO AMBIL SUSU","🥛")
+
+local function UpdateToggle(key)
+    local button=ToggleButtons[key]
+    button.Text=F[key] and "ON" or "OFF"
+    button.BackgroundColor3=F[key] and GREEN or OFF
+end
+
+--========================================================
+-- REMOTE REGISTRY
+--========================================================
+
+local function GetRemoteFolder()
+    local module=RS:FindFirstChild("RemoteRegistry")
+    if not module then return nil end
+
+    local ok,registry=pcall(require,module)
+    if not ok then return nil end
+
+    local success,folder=pcall(function()
+        return registry.folder("Remotes")
+    end)
+
+    if not success then return nil end
+    return folder
+end
+
+local function GetRemote(name,timeout)
+    local folder=GetRemoteFolder()
+    if not folder then return nil end
+    return folder:WaitForChild(name,timeout or 15)
+end
+
+--========================================================
+-- TOOL HELPER
+--========================================================
+
+local function FindTool(keyword)
+    local function Search(container)
+        if not container then return nil end
+
+        for _,tool in ipairs(container:GetChildren()) do
+            if tool:IsA("Tool") then
+                local name=tool.Name:gsub("%s+",""):lower()
+                local target=keyword:gsub("%s+",""):lower()
+
+                if name:find(target,1,true) then
+                    return tool
+                end
+            end
+        end
+    end
+
+    return Search(Player.Backpack) or Search(Player.Character)
+end
+
+local function GetHumanoid()
+    local character=Player.Character
+    return character and character:FindFirstChildOfClass("Humanoid")
+end
+
+local function Equip(tool)
+    local humanoid=GetHumanoid()
+    if not humanoid or not tool then return false end
+
+    humanoid:EquipTool(tool)
+    task.wait(0.7)
+
+    return tool.Parent==Player.Character
+end
+
+--========================================================
+-- AUTO BELI BIBIT JAGUNG
+--========================================================
+
+local ShopBuyRemote
+local CornSeedItem
+
+local function LoadCornShop()
+    local configModule=RS:FindFirstChild("ShopConfig")
+
+    if not configModule then
+        SetStatus("Beli","ShopConfig tidak ditemukan")
+        return false
+    end
+
+    local ok,config=pcall(require,configModule)
+
+    if not ok then
+        SetStatus("Beli","Gagal membaca ShopConfig")
+        return false
+    end
+
+    CornSeedItem=config.Get("BibitJagung")
+
+    if not CornSeedItem then
+        SetStatus("Beli","Data bibit jagung tidak ditemukan")
+        return false
+    end
+
+    if CornSeedItem.ItemId~="BibitJagung"
+    or CornSeedItem.PlantKey~="Jagung"
+    or CornSeedItem.Category~="Bibit" then
+        SetStatus("Beli","Data bibit jagung tidak sesuai")
+        return false
+    end
+
+    local folder=GetRemoteFolder()
+    if not folder then return false end
+
+    ShopBuyRemote=folder:FindFirstChild("ShopBuy")
+
+    return ShopBuyRemote~=nil
+        and ShopBuyRemote:IsA("RemoteFunction")
+end
+
+local function GetSeedStock()
+    local total=0
+
+    local function Scan(container)
+        if not container then return end
+
+        for _,tool in ipairs(container:GetChildren()) do
+            if tool:IsA("Tool") then
+                local name=tool.Name:gsub("%s+",""):lower()
+
+                if name:find("bibitjagung",1,true) then
+                    local amount=
+                        tool:GetAttribute("Amount")
+                        or tool:GetAttribute("Count")
+                        or tool:GetAttribute("Quantity")
+                        or tool:GetAttribute("Stack")
+
+                    if typeof(amount)=="number" then
+                        total=total+amount
+                    else
+                        total=total+(tonumber(name:match("[xX](%d+)")) or 1)
+                    end
+                end
+            end
+        end
+    end
+
+    Scan(Player.Backpack)
+    Scan(Player.Character)
+
+    return total
+end
+
+local function BuyCornSeed()
+    if buyBusy then return end
+    buyBusy=true
+
+    local ok,err=pcall(function()
+        local stock=GetSeedStock()
+        SetStatus("Beli","Stok terbaca: "..stock)
+
+        if stock>=MIN_SEED_STOCK then
+            SetStatus("Beli","Stok masih cukup")
+            return
+        end
+
+        if not LoadCornShop() then
+            SetStatus("Beli","Gagal memuat toko")
+            return
+        end
+
+        SetStatus("Beli","Membeli 120 bibit jagung...")
+
+        local result=ShopBuyRemote:InvokeServer(
+            CornSeedItem.ItemId,
+            BUY_AMOUNT
+        )
+
+        if type(result)=="table" and result.ok==false then
+            SetStatus("Beli","Pembelian ditolak server")
+        else
+            SetStatus("Beli","Permintaan pembelian dikirim")
+        end
+    end)
+
+    if not ok then
+        SetStatus("Beli","Error: "..tostring(err))
+    end
+
+    buyBusy=false
+end
+
+task.spawn(function()
+    while alive and ScreenGui.Parent do
+        if F.Beli then
+            BuyCornSeed()
+            task.wait(15)
+        else
+            task.wait(2)
+        end
+    end
+end)
+
+--========================================================
+-- AUTO RESTOCK
+--========================================================
+
+local function RakGui()
+    return Player:WaitForChild("PlayerGui"):FindFirstChild("RakGui")
+end
+
+local function RakMain()
+    local gui=RakGui()
+    if not gui then return nil end
+    return gui:FindFirstChild("MainFrame",true)
+end
+
+local function RakTerbuka()
+    local frame=RakMain()
+    return frame~=nil and frame.Visible
+end
+
+local function FindIsi()
+    local gui=RakGui()
+    if not gui then return nil end
+
+    for _,object in ipairs(gui:GetDescendants()) do
+        if object:IsA("GuiButton")
+        and object.Visible
+        and object.Name:lower()=="isi" then
+            return object
+        end
+    end
+
+    for _,object in ipairs(gui:GetDescendants()) do
+        if object:IsA("TextButton")
+        and object.Visible
+        and object.Text:lower():find("isi",1,true) then
+            return object
+        end
+    end
+
+    return nil
+end
+
+local function FireButton(button)
+    if not button then return false end
+
+    local success=false
+
+    pcall(function()
+        if typeof(firesignal)=="function" then
+            firesignal(button.Activated)
+            success=true
+        end
+    end)
+
+    if not success then
+        pcall(function()
+            button:Activate()
+            success=true
+        end)
+    end
+
+    return success
+end
+
+local function OpenRak()
+    if RakTerbuka() then return true end
+
+    local gui=RakGui()
+
+    if gui then
+        for _,object in ipairs(gui:GetDescendants()) do
+            if object:IsA("GuiButton") and object.Visible
+            and object.Name:lower():find("rak",1,true) then
+                FireButton(object)
+                task.wait(0.5)
+                if RakTerbuka() then return true end
+            end
+        end
+    end
+
+    for _,object in ipairs(Player.PlayerGui:GetDescendants()) do
+        if object:IsA("GuiButton") and object.Visible
+        and object.Name:lower():find("rak",1,true) then
+            FireButton(object)
+            task.wait(0.5)
+            if RakTerbuka() then return true end
+        end
+    end
+
+    return RakTerbuka()
+end
+
+local function ProcessRestock()
+    if not RakTerbuka() then
+        SetStatus("Restock","Membuka Rak Kios...")
+        if not OpenRak() then
+            SetStatus("Restock","Rak belum terbuka")
+            return
+        end
+    end
+
+    local button=FindIsi()
+
+    if not button then
+        SetStatus("Restock","Tombol Isi tidak ditemukan")
+        return
+    end
+
+    if FireButton(button) then
+        SetStatus("Restock","Tombol Isi dikirim")
+    else
+        SetStatus("Restock","Gagal menekan Isi")
+    end
+end
+
+task.spawn(function()
+    while alive and ScreenGui.Parent do
+        if F.Restock then
+            local ok,err=pcall(ProcessRestock)
+            if not ok then
+                SetStatus("Restock","Error: "..tostring(err))
+            end
+            task.wait(1)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+--========================================================
+-- AUTO SAPI: PROMPT + POSISI
+--========================================================
+
+local function GetCowPen()
+    local exact=workspace:FindFirstChild("KandangSapi_2919114494",true)
+    if exact then return exact end
+
+    for _,object in ipairs(workspace:GetDescendants()) do
+        if object.Name:match("^KandangSapi_") then
+            return object
+        end
+    end
+
+    return nil
+end
+
+local function GetCowPrompt(promptName)
+    local pen=GetCowPen()
+    if not pen then return nil end
+
+    local prompt=pen:FindFirstChild(promptName,true)
+
+    if prompt and prompt:IsA("ProximityPrompt") then
+        return prompt
+    end
+
+    return nil
+end
+
+local function TriggerPrompt(prompt)
+    if not prompt or not prompt.Parent then
+        return false,"Prompt tidak ditemukan"
+    end
+
+    if not prompt.Enabled then
+        return false,"Prompt belum aktif"
+    end
+
+    if typeof(fireproximityprompt)=="function" then
+        local ok=pcall(function()
+            fireproximityprompt(prompt,prompt.HoldDuration)
+        end)
+        if ok then return true end
+    end
+
+    local ok,err=pcall(function()
+        prompt:InputHoldBegin()
+        task.wait(math.max(prompt.HoldDuration,0)+0.1)
+        prompt:InputHoldEnd()
+    end)
+
+    if ok then return true end
+    return false,tostring(err)
+end
+
+local function GetPromptPosition(prompt)
+    if not prompt or not prompt.Parent then return nil end
+
+    local parent=prompt.Parent
+
+    if parent:IsA("Attachment") then
+        return parent.WorldPosition
+    elseif parent:IsA("BasePart") then
+        return parent.Position
+    elseif parent:IsA("Model") then
+        return parent:GetPivot().Position
+    end
+
+    local part=parent:FindFirstAncestorWhichIsA("BasePart")
+    if part then return part.Position end
+
+    return nil
+end
+
+local function WaitForCowTeleport()
+    while cowTeleporting and alive do
+        task.wait(0.1)
+    end
+    return alive
+end
+
+local function TeleportToPrompt(prompt)
+    local character=Player.Character
+    local root=character and character:FindFirstChild("HumanoidRootPart")
+
+    if not character or not root then
+        return nil,nil,"Karakter tidak ditemukan"
+    end
+
+    local position=GetPromptPosition(prompt)
+    if not position then
+        return nil,nil,"Posisi prompt tidak terbaca"
+    end
+
+    local savedCFrame=root.CFrame
+    character:PivotTo(CFrame.new(position+Vector3.new(0,3,0)))
+    task.wait(1)
+
+    return savedCFrame,character,nil
+end
+
+local function ReturnToSavedPosition(savedCFrame)
+    if not savedCFrame then return end
+
+    local character=Player.Character
+    if character then
+        pcall(function()
+            character:PivotTo(savedCFrame)
+        end)
+    end
+
+    task.wait(1)
+end
+
+--========================================================
+-- PEMBACA PAKAN
+--========================================================
+
+local function GetFeedAmount()
+    local pen=GetCowPen()
+    if not pen then return nil end
+
+    local fallback=nil
+
+    for _,obj in ipairs(pen:GetDescendants()) do
+        if obj:IsA("TextLabel")
+        or obj:IsA("TextButton")
+        or obj:IsA("TextBox") then
+
+            local text=tostring(obj.Text or "")
+            local upper=text:upper()
+            local current,total=text:match("(%d+)%s*/%s*(%d+)")
+
+            if current and tonumber(total)==MAX_PAKAN then
+                current=tonumber(current)
+
+                if upper:find("PAKAN",1,true)
+                or upper:find("FEED",1,true) then
+                    return current
+                end
+
+                if not upper:find("SUSU",1,true)
+                and not upper:find("MILK",1,true)
+                and fallback==nil then
+                    fallback=current
+                end
+            end
+        end
+    end
+
+    return fallback
+end
+
+--========================================================
+-- PEMBACA SUSU
+--========================================================
+
+local function GetMilkAmount()
+    local pen=GetCowPen()
+    if not pen then return nil end
+
+    for _,obj in ipairs(pen:GetDescendants()) do
+        if obj:IsA("TextLabel")
+        or obj:IsA("TextButton")
+        or obj:IsA("TextBox") then
+
+            local text=tostring(obj.Text or "")
+            local upper=text:upper()
+
+            if upper:find("SUSU",1,true)
+            or upper:find("MILK",1,true) then
+
+                local current,total=text:match("(%d+)%s*/%s*(%d+)")
+
+                if current and tonumber(total)==MAX_SUSU then
+                    return tonumber(current)
+                end
+
+                local parent=obj.Parent
+
+                if parent then
+                    for _,child in ipairs(parent:GetDescendants()) do
+                        if child:IsA("TextLabel")
+                        or child:IsA("TextButton")
+                        or child:IsA("TextBox") then
+
+                            local n,t=tostring(child.Text or ""):match("(%d+)%s*/%s*(%d+)")
+
+                            if n and tonumber(t)==MAX_SUSU then
+                                return tonumber(n)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+--========================================================
+-- AUTO PAKAN TELEPORT
+--========================================================
+
+local function FeedAtCow()
+    if pakanBusy or susuBusy or cowTeleporting then return end
+
+    pakanBusy=true
+    cowTeleporting=true
+
+    local savedCFrame
+    local teleported=false
+    local finished=false
+    local failureReason
+
+    local ok,err=pcall(function()
+        local prompt=GetCowPrompt("PakanPrompt")
+
+        if not prompt then
+            failureReason="PakanPrompt tidak ditemukan"
+            return
+        end
+
+        SetStatus("Pakan","Menyimpan posisi...")
+
+        local saved,character,reason=TeleportToPrompt(prompt)
+
+        if not saved then
+            failureReason=reason
+            return
+        end
+
+        savedCFrame=saved
+        teleported=true
+
+        local startTime=os.clock()
+
+        while alive and F.Pakan and os.clock()-startTime<75 do
+            local amount=GetFeedAmount()
+
+            if amount==nil then
+                failureReason="Angka pakan tidak terbaca"
+                break
+            end
+
+            if amount>=MAX_PAKAN then
+                finished=true
+                break
+            end
+
+            prompt=GetCowPrompt("PakanPrompt")
+
+            if not prompt then
+                failureReason="PakanPrompt hilang"
+                break
+            end
+
+            if prompt.Enabled then
+                TriggerPrompt(prompt)
+                SetStatus("Pakan","Mengisi pakan: "..amount.."/60")
+            else
+                SetStatus("Pakan","Menunggu prompt: "..amount.."/60")
+            end
+
+            task.wait(1.5)
+        end
+
+        if not finished and not failureReason then
+            failureReason="Waktu pengisian habis"
+        end
+    end)
+
+    if not ok then
+        failureReason="Error: "..tostring(err)
+    end
+
+    if teleported then
+        SetStatus("Pakan","Kembali ke posisi awal...")
+        ReturnToSavedPosition(savedCFrame)
+    end
+
+    cowTeleporting=false
+    pakanBusy=false
+
+    if finished then
+        SetStatus("Pakan","Penuh 60/60 - kembali")
+    elseif failureReason then
+        SetStatus("Pakan",failureReason.." - posisi dikembalikan")
+    else
+        SetStatus("Pakan","Selesai")
+    end
+end
+
+task.spawn(function()
+    while alive and ScreenGui.Parent do
+        if F.Pakan and not pakanBusy and not susuBusy then
+            local amount=GetFeedAmount()
+
+            if amount==nil then
+                SetStatus("Pakan","Angka pakan belum terbaca")
+            elseif amount<MIN_PAKAN then
+                FeedAtCow()
+            else
+                SetStatus("Pakan","Pakan "..amount.."/60 - menunggu di bawah 20")
+            end
+
+            task.wait(2)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+--========================================================
+-- AUTO SUSU TELEPORT SAAT 50/60
+--========================================================
+
+local function MilkAtCow()
+    if susuBusy or pakanBusy or cowTeleporting then return end
+
+    susuBusy=true
+    cowTeleporting=true
+
+    local savedCFrame
+    local teleported=false
+    local collected=false
+    local failureReason
+
+    local ok,err=pcall(function()
+        local prompt=GetCowPrompt("AmbilPrompt")
+
+        if not prompt then
+            failureReason="AmbilPrompt tidak ditemukan"
+            return
+        end
+
+        SetStatus("Susu","Menyimpan posisi...")
+
+        local saved,character,reason=TeleportToPrompt(prompt)
+
+        if not saved then
+            failureReason=reason
+            return
+        end
+
+        savedCFrame=saved
+        teleported=true
+
+        local startAmount=GetMilkAmount()
+
+        if startAmount==nil then
+            failureReason="Angka susu tidak terbaca"
+            return
+        end
+
+        local startTime=os.clock()
+
+        while alive and F.Susu and os.clock()-startTime<30 do
+            local amount=GetMilkAmount()
+
+            if amount==nil then
+                failureReason="Angka susu tidak terbaca"
+                break
+            end
+
+            if amount<MIN_SUSU or amount<startAmount then
+                collected=true
+                break
+            end
+
+            prompt=GetCowPrompt("AmbilPrompt")
+
+            if not prompt then
+                failureReason="AmbilPrompt hilang"
+                break
+            end
+
+            if prompt.Enabled then
+                TriggerPrompt(prompt)
+                SetStatus("Susu","Mengambil susu: "..amount.."/60")
+            else
+                SetStatus("Susu","Menunggu AmbilPrompt...")
+            end
+
+            task.wait(1.5)
+        end
+
+        if not collected and not failureReason then
+            failureReason="Susu belum berubah"
+        end
+    end)
+
+    if not ok then
+        failureReason="Error: "..tostring(err)
+    end
+
+    if teleported then
+        SetStatus("Susu","Kembali ke posisi awal...")
+        ReturnToSavedPosition(savedCFrame)
+    end
+
+    cowTeleporting=false
+    susuBusy=false
+
+    if collected then
+        SetStatus("Susu","Susu diambil - kembali ke posisi awal")
+    elseif failureReason then
+        SetStatus("Susu",failureReason.." - posisi dikembalikan")
+    else
+        SetStatus("Susu","Selesai")
+    end
+end
+
+task.spawn(function()
+    while alive and ScreenGui.Parent do
+        if F.Susu and not susuBusy and not pakanBusy then
+            local amount=GetMilkAmount()
+
+            if amount==nil then
+                SetStatus("Susu","Angka susu belum terbaca")
+            elseif amount>=MIN_SUSU then
+                MilkAtCow()
+            else
+                SetStatus("Susu","Susu "..amount.."/60 - menunggu 50")
+            end
+
+            task.wait(2)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+--========================================================
+-- AUTO JAGUNG 24 TANAMAN DI SATU TITIK
+--========================================================
+
+local function GetLahan()
+    return workspace:FindFirstChild("Lahan1",true)
+end
+
+local function GetLahanBounds(object)
+    if not object then return nil end
+
+    if object:IsA("BasePart") then
+        return object.CFrame,object.Size
+    elseif object:IsA("Model") then
+        local cf,size=object:GetBoundingBox()
+        return cf,size
+    end
+
+    return nil
+end
+
+local function GetCornPlantPoint(lahan)
+    local cf,size=GetLahanBounds(lahan)
+    if not cf or not size then return nil end
+
+    return cf:PointToWorldSpace(Vector3.new(0,size.Y/2+0.5,0)),cf,size
+end
+
+local function IsInsideLahan(object,lahanCF,lahanSize)
+    local localPosition=lahanCF:PointToObjectSpace(object.Position)
+
+    return math.abs(localPosition.X)<=lahanSize.X/2+3
+        and math.abs(localPosition.Z)<=lahanSize.Z/2+3
+end
+
+local function GetCornPlants(lahanCF,lahanSize)
+    local plot=workspace:FindFirstChild("Plot")
+    if not plot then return {} end
+
+    local plants={}
+
+    for _,object in ipairs(plot:GetDescendants()) do
+        if object:IsA("BasePart")
+        and object:GetAttribute("PlantKey")=="Jagung"
+        and object:GetAttribute("OwnerId")==Player.UserId
+        and IsInsideLahan(object,lahanCF,lahanSize) then
+
+            table.insert(plants,object)
+        end
+    end
+
+    return plants
+end
+
+local function GetRemoteSafe(name)
+    local remote=GetRemote(name,15)
+
+    if not remote or not remote:IsA("RemoteEvent") then
+        return nil
+    end
+
+    return remote
+end
+
+--========================================================
+-- TELEPORT LANGSUNG KE TITIK LAHAN1
+--========================================================
+
+local function TeleportToCornPoint(position)
+    local character=Player.Character
+    local root=character and character:FindFirstChild("HumanoidRootPart")
+
+    if not character or not root then
+        SetStatus("Jagung","Karakter tidak ditemukan")
+        return false
+    end
+
+    local targetCFrame=CFrame.new(position+Vector3.new(0,3,0))
+
+    local ok,err=pcall(function()
+        character:PivotTo(targetCFrame)
+    end)
+
+    if not ok then
+        SetStatus("Jagung","Teleport gagal: "..tostring(err))
+        return false
+    end
+
+    task.wait(1)
+
+    local newRoot=character:FindFirstChild("HumanoidRootPart")
+
+    if not newRoot then
+        SetStatus("Jagung","HumanoidRootPart hilang")
+        return false
+    end
+
+    local distance=(newRoot.Position-targetCFrame.Position).Magnitude
+
+    if distance>12 then
+        SetStatus("Jagung","Teleport belum mencapai titik Lahan1")
+        return false
+    end
+
+    SetStatus("Jagung","Berhasil teleport ke titik Lahan1")
+    return true
+end
+
+--========================================================
+-- TANAM 24X DI KOORDINAT YANG SAMA
+--========================================================
+
+local function PlantCornAtOnePoint(position)
+    local seed=FindTool("BibitJagung")
+    local tanam=GetRemoteSafe("Tanam")
+
+    if not seed or not tanam then
+        SetStatus("Jagung","Bibit atau Remote Tanam tidak ditemukan")
+        return false
+    end
+
+    if not Equip(seed) then
+        SetStatus("Jagung","Gagal equip bibit jagung")
+        return false
+    end
+
+    for i=1,MAX_PLANTS do
+        if not running or not alive then return false end
+        if not WaitForCowTeleport() then return false end
+
+        SetStatus("Jagung","Menanam satu titik "..i.."/24")
+
+        local ok,err=pcall(function()
+            tanam:FireServer(position)
+        end)
+
+        if not ok then
+            SetStatus("Jagung","Tanam gagal: "..tostring(err))
+            return false
+        end
+
+        task.wait(1)
+    end
+
+    return true
+end
+
+--========================================================
+-- SIRAM SELAMA 3 DETIK
+--========================================================
+
+local function WaterCornOnce()
+    local sprinkler=FindTool("PenyiramTanaman")
+
+    if not sprinkler then
+        SetStatus("Jagung","Penyiram tidak ditemukan")
+        return false
+    end
+
+    if not Equip(sprinkler) then
+        SetStatus("Jagung","Gagal equip penyiram")
+        return false
+    end
+
+    if not running or not alive then return false end
+
+    SetStatus("Jagung","Menyiram selama 3 detik...")
+
+    local activated=false
+
+    local ok,err=pcall(function()
+        sprinkler:Activate()
+        activated=true
+        task.wait(WATER_DURATION)
+        sprinkler:Deactivate()
+    end)
+
+    if not ok then
+        if activated then
+            pcall(function()
+                sprinkler:Deactivate()
+            end)
+        end
+
+        SetStatus("Jagung","Gagal menyiram: "..tostring(err))
+        return false
+    end
+
+    SetStatus("Jagung","Siram selesai 3 detik")
+    return true
+end
+
+--========================================================
+-- HITUNG MUNDUR TEPAT 30 DETIK
+--========================================================
+
+local function WaitCorn30Seconds()
+    local startTime=os.clock()
+
+    while running and alive do
+        if not WaitForCowTeleport() then return false end
+
+        local elapsed=os.clock()-startTime
+        local remaining=math.max(0,CORN_GROW_TIME-math.floor(elapsed))
+
+        if elapsed>=CORN_GROW_TIME then
+            SetStatus("Jagung","30 detik selesai - mulai panen")
+            return true
+        end
+
+        SetStatus("Jagung","Menunggu panen: "..remaining.." detik")
+        task.wait(0.2)
+    end
+
+    return false
+end
+
+--========================================================
+-- PANEN 24X DARI SATU TITIK
+--========================================================
+
+local function HarvestAllAtOnePoint(lahanCF,lahanSize)
+    local remote=GetRemoteSafe("Panen")
+
+    if not remote then
+        SetStatus("Jagung","Remote Panen tidak ditemukan")
+        return false
+    end
+
+    local plants=GetCornPlants(lahanCF,lahanSize)
+
+    if #plants<MAX_PLANTS then
+        SetStatus("Jagung","Objek jagung ditemukan "..#plants.."/24")
+        return false
+    end
+
+    local targets={}
+
+    for _,plant in ipairs(plants) do
+        if plant.Parent then
+            table.insert(targets,plant)
+        end
+
+        if #targets>=MAX_PLANTS then
+            break
+        end
+    end
+
+    local sent=0
+
+    for i=1,#targets do
+        if not running or not alive then return false end
+        if not WaitForCowTeleport() then return false end
+
+        local target=targets[i]
+
+        if target and target.Parent then
+            local ok,err=pcall(function()
+                remote:FireServer(target)
+            end)
+
+            if not ok then
+                SetStatus("Jagung","Error panen: "..tostring(err))
+                return false
+            end
+
+            sent=sent+1
+            SetStatus("Jagung","Mengirim panen "..sent.."/24")
+
+            task.wait(0.65)
+        end
+    end
+
+    if sent<MAX_PLANTS then
+        SetStatus("Jagung","Permintaan panen terkirim "..sent.."/24")
+        return false
+    end
+
+    SetStatus("Jagung","24 permintaan panen terkirim")
+    return true
+end
+
+--========================================================
+-- SIKLUS JAGUNG V23
+--========================================================
+
+local function RunCornCycle()
+    local lahan=GetLahan()
+
+    if not lahan then
+        SetStatus("Jagung","Lahan1 tidak ditemukan")
+        return false
+    end
+
+    local position,lahanCF,lahanSize=GetCornPlantPoint(lahan)
+
+    if not position then
+        SetStatus("Jagung","Titik Lahan1 tidak terbaca")
+        return false
+    end
+
+    -- TELEPORT LANGSUNG KE TITIK TANAM
+    if not TeleportToCornPoint(position) then
+        return false
+    end
+
+    -- TANAM 24X DI SATU TITIK
+    if not PlantCornAtOnePoint(position) then
+        return false
+    end
+
+    -- SIRAM SELAMA 3 DETIK
+    if not WaterCornOnce() then
+        return false
+    end
+
+    -- TUNGGU TEPAT 30 DETIK
+    if not WaitCorn30Seconds() then
+        return false
+    end
+
+    -- PANEN 24X DARI POSISI YANG SAMA
+    if not HarvestAllAtOnePoint(lahanCF,lahanSize) then
+        return false
+    end
+
+    SetStatus("Jagung","24 permintaan panen selesai!")
+    return true
+end
+
+--========================================================
+-- AUTO JAGUNG: TETAP ON SAAT ERROR
+--========================================================
+
+local function StartCorn()
+    if busy then return end
+
+    busy=true
+    running=true
+
+    task.spawn(function()
+        while running and alive and ScreenGui.Parent do
+            local ok,result=pcall(RunCornCycle)
+
+            if not running or not alive then
+                break
+            end
+
+            if not ok then
+                SetStatus("Jagung","Error - mencoba ulang, tetap ON")
+                task.wait(4)
+            elseif result==false then
+                SetStatus("Jagung","Siklus gagal - mencoba ulang")
+                task.wait(4)
+            else
+                SetStatus("Jagung","Siklus selesai! Mengulang...")
+                task.wait(2)
+            end
+        end
+
+        busy=false
+
+        if not alive then return end
+
+        if not running then
+            F.Jagung=false
+            UpdateToggle("Jagung")
+            SetStatus("Jagung","OFF oleh pengguna")
+        end
+    end)
+end
+
+--========================================================
+-- TOGGLE EVENTS
+--========================================================
+
+RestockToggle.Activated:Connect(function()
+    F.Restock=not F.Restock
+    UpdateToggle("Restock")
+
+    SetStatus(
+        "Restock",
+        F.Restock and "Auto Restock aktif" or "Nonaktif"
+    )
+end)
+
+BeliToggle.Activated:Connect(function()
+    F.Beli=not F.Beli
+    UpdateToggle("Beli")
+
+    SetStatus(
+        "Beli",
+        F.Beli and "Auto Beli aktif" or "Nonaktif"
+    )
+end)
+
+PakanToggle.Activated:Connect(function()
+    F.Pakan=not F.Pakan
+    UpdateToggle("Pakan")
+
+    SetStatus(
+        "Pakan",
+        F.Pakan and "Auto Beri Makan aktif" or "Nonaktif"
+    )
+end)
+
+SusuToggle.Activated:Connect(function()
+    F.Susu=not F.Susu
+    UpdateToggle("Susu")
+
+    SetStatus(
+        "Susu",
+        F.Susu and "Auto Ambil Susu aktif" or "Nonaktif"
+    )
+end)
+
+JagungToggle.Activated:Connect(function()
+    if running then
+        running=false
+        F.Jagung=false
+        UpdateToggle("Jagung")
+        SetStatus("Jagung","Menghentikan atas perintah pengguna...")
+        return
+    end
+
+    if busy then return end
+
+    F.Jagung=true
+    UpdateToggle("Jagung")
+    SetStatus("Jagung","ON - memulai...")
+    StartCorn()
+end)
+
+--========================================================
+-- CLOSE
+--========================================================
+
+CloseButton.Activated:Connect(function()
+    alive=false
+    running=false
+
+    for key in pairs(F) do
+        F[key]=false
+    end
+
+    ScreenGui:Destroy()
+end)
+
+--========================================================
+-- INITIAL STATUS
+--========================================================
+
+for key in pairs(F) do
+    UpdateToggle(key)
+    SetStatus(key,"Siap")
+end
+
+print("MAU CONTROL V23 LOADED")
