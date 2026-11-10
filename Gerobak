@@ -1,0 +1,1045 @@
+--==================================================
+-- MAU CONTROL V9 EXTREME TURBO
+-- AUTO BABI | AUTO BAHAN | AUTO SEMUANYA
+-- AUTO REOPEN ETALASE
+-- GEROBAK REFILL 9/9 | HARGA 1 KOIN
+-- AUTO BUY MAX | AUTO SCAN LAPAK
+-- AUTO REFRESH DAGANGAN
+--==================================================
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UIS = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+
+local Player = Players.LocalPlayer
+local Parent = CoreGui
+
+pcall(function()
+    if typeof(gethui) == "function" then
+        Parent = gethui()
+    end
+end)
+
+local Old = Parent:FindFirstChild("MAU_GEROBAK")
+if Old then Old:Destroy() end
+
+--==================================================
+-- STATUS FITUR
+--==================================================
+
+local F = {
+    Babi = false,
+    Bahan = false,
+    Semua = false,
+    Buy = false
+}
+
+local WorkerRunning = false
+local BuyWorkerRunning = false
+
+local LastKind = "Bahan"
+local LastOpenAttempt = 0
+
+--==================================================
+-- SPEED SETTINGS
+--==================================================
+
+local SPEED = {
+    SheetCheck = 0.015,
+    SheetTimeout = 1.2,
+
+    AfterPrice = 0.02,
+    AfterPlace = 0.12,
+    AfterEquip = 0.1,
+
+    ReopenDelay = 0.35,
+    ReopenCheck = 0.05,
+
+    Retry = 0.15,
+    FullWait = 1,
+    DataFail = 0.5,
+
+    BuyScan = 2,
+    BuyRefresh = 2,
+    BuyAfter = 0.25,
+    BuyError = 1
+}
+
+--==================================================
+-- GUI
+--==================================================
+
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "MAU_GEROBAK"
+Gui.ResetOnSpawn = false
+Gui.DisplayOrder = 999999
+Gui.Parent = Parent
+
+local Main = Instance.new("Frame")
+Main.Size = UDim2.fromOffset(260,320)
+Main.Position = UDim2.new(0.5,-130,0.5,-160)
+Main.BackgroundColor3 = Color3.fromRGB(28,35,29)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Parent = Gui
+
+Instance.new("UICorner",Main).CornerRadius = UDim.new(0,10)
+
+local Header = Instance.new("TextButton")
+Header.Size = UDim2.new(1,0,0,38)
+Header.BackgroundColor3 = Color3.fromRGB(45,125,65)
+Header.Text = "MAU CONTROL V9 TURBO"
+Header.TextColor3 = Color3.new(1,1,1)
+Header.Font = Enum.Font.GothamBold
+Header.TextSize = 14
+Header.Parent = Main
+
+local Close = Instance.new("TextButton")
+Close.Size = UDim2.fromOffset(30,28)
+Close.Position = UDim2.new(1,-34,0,5)
+Close.BackgroundColor3 = Color3.fromRGB(160,55,55)
+Close.Text = "X"
+Close.TextColor3 = Color3.new(1,1,1)
+Close.Parent = Main
+
+local function NewToggle(Name,Text,Y)
+    local Button = Instance.new("TextButton")
+    Button.Name = Name
+    Button.Size = UDim2.new(1,-24,0,43)
+    Button.Position = UDim2.fromOffset(12,Y)
+    Button.BackgroundColor3 = Color3.fromRGB(65,65,65)
+    Button.Text = Text.." : OFF"
+    Button.TextColor3 = Color3.new(1,1,1)
+    Button.Font = Enum.Font.GothamBold
+    Button.TextSize = 13
+    Button.Parent = Main
+
+    Instance.new("UICorner",Button).CornerRadius = UDim.new(0,7)
+
+    return Button
+end
+
+local BabiButton = NewToggle("AutoBabi","AUTO BABI",50)
+local BahanButton = NewToggle("AutoBahan","AUTO BAHAN",100)
+local SemuaButton = NewToggle("AutoSemua","AUTO SEMUANYA",150)
+local BuyButton = NewToggle("AutoBuy","AUTO BUY MAX",200)
+
+local Status = Instance.new("TextLabel")
+Status.Size = UDim2.new(1,-24,0,45)
+Status.Position = UDim2.fromOffset(12,255)
+Status.BackgroundTransparency = 1
+Status.Text = "Status: Mati"
+Status.TextColor3 = Color3.fromRGB(220,220,220)
+Status.Font = Enum.Font.Gotham
+Status.TextSize = 11
+Status.TextWrapped = true
+Status.Parent = Main
+
+local Mini = Instance.new("TextButton")
+Mini.Size = UDim2.fromOffset(42,42)
+Mini.Position = UDim2.new(0,12,0.5,0)
+Mini.BackgroundColor3 = Color3.fromRGB(45,125,65)
+Mini.Text = "M"
+Mini.TextColor3 = Color3.new(1,1,1)
+Mini.Font = Enum.Font.GothamBold
+Mini.TextSize = 17
+Mini.Visible = false
+Mini.Parent = Gui
+
+Instance.new("UICorner",Mini).CornerRadius = UDim.new(1,0)
+
+--==================================================
+-- DRAG
+--==================================================
+
+local function MakeDraggable(Frame,Handle)
+    local Dragging = false
+    local StartInput
+    local StartPosition
+
+    Handle.InputBegan:Connect(function(Input)
+        if Input.UserInputType == Enum.UserInputType.MouseButton1
+        or Input.UserInputType == Enum.UserInputType.Touch then
+            Dragging = true
+            StartInput = Input.Position
+            StartPosition = Frame.Position
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(Input)
+        if Dragging and (
+            Input.UserInputType == Enum.UserInputType.MouseMovement
+            or Input.UserInputType == Enum.UserInputType.Touch
+        ) then
+            local Delta = Input.Position - StartInput
+
+            Frame.Position = UDim2.new(
+                StartPosition.X.Scale,
+                StartPosition.X.Offset + Delta.X,
+                StartPosition.Y.Scale,
+                StartPosition.Y.Offset + Delta.Y
+            )
+        end
+    end)
+
+    UIS.InputEnded:Connect(function(Input)
+        if Input.UserInputType == Enum.UserInputType.MouseButton1
+        or Input.UserInputType == Enum.UserInputType.Touch then
+            Dragging = false
+        end
+    end)
+end
+
+MakeDraggable(Main,Header)
+MakeDraggable(Mini,Mini)
+
+Close.Activated:Connect(function()
+    Main.Visible = false
+    Mini.Visible = true
+end)
+
+Mini.Activated:Connect(function()
+    Mini.Visible = false
+    Main.Visible = true
+end)
+
+--==================================================
+-- TOGGLE DISPLAY
+--==================================================
+
+local GREEN = Color3.fromRGB(40,135,65)
+local GREY = Color3.fromRGB(65,65,65)
+
+local function UpdateButtons()
+    BabiButton.Text = "AUTO BABI : "..(F.Babi and "ON" or "OFF")
+    BahanButton.Text = "AUTO BAHAN : "..(F.Bahan and "ON" or "OFF")
+    SemuaButton.Text = "AUTO SEMUANYA : "..(F.Semua and "ON" or "OFF")
+    BuyButton.Text = "AUTO BUY MAX : "..(F.Buy and "ON" or "OFF")
+
+    BabiButton.BackgroundColor3 = F.Babi and GREEN or GREY
+    BahanButton.BackgroundColor3 = F.Bahan and GREEN or GREY
+    SemuaButton.BackgroundColor3 = F.Semua and GREEN or GREY
+    BuyButton.BackgroundColor3 = F.Buy and GREEN or GREY
+end
+
+local function AnyRunning()
+    return F.Babi or F.Bahan
+end
+
+--==================================================
+-- REMOTE GAME ASLI
+--==================================================
+
+local LapakRemote
+
+local function GetLapakRemote()
+    if LapakRemote and LapakRemote.Parent then
+        return LapakRemote
+    end
+
+    local Registry = ReplicatedStorage:FindFirstChild("RemoteRegistry")
+    if not Registry then return nil end
+
+    local Success,Module = pcall(require,Registry)
+    if not Success or not Module then return nil end
+
+    local Success2,Folder = pcall(function()
+        return Module.folder("Remotes")
+    end)
+
+    if not Success2 or not Folder then return nil end
+
+    LapakRemote = Folder:FindFirstChild("LapakAksi")
+    return LapakRemote
+end
+
+local function GetEtalaseData()
+    local Remote = GetLapakRemote()
+    if not Remote then return nil end
+
+    local Success,Data = pcall(function()
+        return Remote:InvokeServer("etalase")
+    end)
+
+    if Success and type(Data) == "table" and Data.ok then
+        return Data
+    end
+
+    return nil
+end
+
+--==================================================
+-- CARI UI GEROBAK
+--==================================================
+
+local CachedEtalase
+local CachedSheet
+
+local function FindLapakUI()
+    if CachedEtalase and CachedSheet
+    and CachedEtalase.Parent and CachedSheet.Parent then
+        return CachedEtalase,CachedSheet
+    end
+
+    CachedEtalase = nil
+    CachedSheet = nil
+
+    local PlayerGui = Player:FindFirstChild("PlayerGui")
+    if not PlayerGui then return nil end
+
+    for _,Obj in ipairs(PlayerGui:GetDescendants()) do
+        if Obj.Name == "MainFrame" then
+            local Container = Obj:FindFirstChild("Container")
+            local Etalase = Container and Container:FindFirstChild("Etalase")
+            local Sheet = Container and Container:FindFirstChild("Sheet")
+
+            if Etalase and Sheet then
+                CachedEtalase = Etalase
+                CachedSheet = Sheet
+                return Etalase,Sheet
+            end
+        end
+    end
+end
+
+local function ClickButton(Button)
+    if not Button then return false end
+
+    if typeof(firesignal) == "function" then
+        local Success = pcall(function()
+            firesignal(Button.Activated)
+        end)
+
+        if Success then
+            return true
+        end
+    end
+
+    return pcall(function()
+        Button:Activate()
+    end)
+end
+
+--==================================================
+-- CEK ETALASE
+--==================================================
+
+local function IsEtalaseOpen()
+    local Etalase = FindLapakUI()
+    if not Etalase then return false end
+
+    local Current = Etalase
+
+    while Current do
+        if Current:IsA("GuiObject") and not Current.Visible then
+            return false
+        end
+
+        if Current:IsA("ScreenGui") and not Current.Enabled then
+            return false
+        end
+
+        Current = Current.Parent
+    end
+
+    return true
+end
+
+--==================================================
+-- BARANG YANG SUDAH ADA
+--==================================================
+
+local function GetListedIds(Data)
+    local Listed = {}
+
+    for _,Item in ipairs(Data.barang or {}) do
+        if type(Item) == "table" then
+            if Item.id then
+                Listed[tostring(Item.id)] = true
+            end
+
+            if type(Item.babi) == "table" and Item.babi.id then
+                Listed["babi:"..tostring(Item.babi.id)] = true
+            end
+        end
+    end
+
+    return Listed
+end
+
+--==================================================
+-- PILIH ITEM
+--==================================================
+
+local function FindAvailableItem(Grid,Listed,Kind,Data)
+    if Kind == "Babi" then
+        for _,Pig in ipairs(Data.babiTas or {}) do
+            if type(Pig) == "table"
+            and Pig.id
+            and not Pig.kunci then
+
+                local PigName = "babi:"..tostring(Pig.id)
+
+                if not Listed[PigName] then
+                    local Button = Grid:FindFirstChild(PigName)
+
+                    if Button and Button:IsA("GuiButton")
+                    and Button.Visible and Button.Active then
+                        return Button
+                    end
+                end
+            end
+        end
+
+        return nil
+    end
+
+    for _,Item in ipairs(Grid:GetChildren()) do
+        if Item:IsA("GuiButton")
+        and Item.Visible
+        and Item.Active
+        and Item.Name ~= "ItemTemplate" then
+
+            local IsPig = string.sub(Item.Name,1,5) == "babi:"
+
+            if not IsPig and not Listed[Item.Name] then
+                return Item
+            end
+        end
+    end
+end
+
+--==================================================
+-- TUNGGU SHEET
+--==================================================
+
+local function WaitForSheet(Sheet)
+    local Started = os.clock()
+
+    repeat
+        if Sheet.Visible then
+            return true
+        end
+
+        task.wait(SPEED.SheetCheck)
+    until os.clock() - Started >= SPEED.SheetTimeout
+
+    return Sheet.Visible
+end
+
+--==================================================
+-- TARUH ITEM
+--==================================================
+
+local function TaruhSatu(Data,Kind)
+    local Etalase,Sheet = FindLapakUI()
+
+    if not Etalase or not Sheet or not IsEtalaseOpen() then
+        return false,"Etalase belum terbuka"
+    end
+
+    local Tas = Etalase:FindFirstChild("Tas")
+    local Grid = Tas and Tas:FindFirstChild("Grid")
+
+    if not Grid then
+        return false,"Grid tas tidak ditemukan"
+    end
+
+    local Listed = GetListedIds(Data)
+    local Item = FindAvailableItem(Grid,Listed,Kind,Data)
+
+    if not Item then
+        return false,"Tidak ada "..Kind.." baru"
+    end
+
+    Status.Text = "Memilih "..Kind..": "..Item.Name
+
+    if not ClickButton(Item) then
+        return false,"Gagal memilih "..Kind
+    end
+
+    if not WaitForSheet(Sheet) then
+        return false,"Sheet harga tidak muncul"
+    end
+
+    if not AnyRunning() then
+        return false,"Proses dihentikan"
+    end
+
+    if not IsEtalaseOpen() then
+        return false,"Etalase tertutup"
+    end
+
+    local BarisHarga = Sheet:FindFirstChild("BarisHarga")
+    local KotakHarga = BarisHarga and BarisHarga:FindFirstChild("Kotak")
+
+    if not KotakHarga then
+        return false,"Kolom harga tidak ditemukan"
+    end
+
+    if Kind == "Babi" then
+        KotakHarga.Text = "1"
+    else
+        local Preset = Sheet:FindFirstChild("Preset")
+        local Semua = Preset and Preset:FindFirstChild("Pre3")
+
+        if not Semua then
+            return false,"Tombol Semua tidak ditemukan"
+        end
+
+        if not ClickButton(Semua) then
+            return false,"Gagal memilih preset"
+        end
+
+        task.wait(SPEED.AfterPrice)
+
+        if not KotakHarga.Parent then
+            return false,"Kolom harga hilang"
+        end
+
+        KotakHarga.Text = "1"
+    end
+
+    task.wait(SPEED.AfterPrice)
+
+    if not AnyRunning() then
+        return false,"Proses dihentikan"
+    end
+
+    local OK = Sheet:FindFirstChild("OK")
+
+    if not OK then
+        return false,"Tombol Taruh tidak ditemukan"
+    end
+
+    Status.Text = "Menaruh "..Kind..": "..Item.Name
+
+    if not ClickButton(OK) then
+        return false,"Gagal menekan Taruh"
+    end
+
+    task.wait(SPEED.AfterPlace)
+
+    return true
+end
+
+--==================================================
+-- GEROBAK
+--==================================================
+
+local function GetGerobak()
+    local Character = Player.Character
+    local Backpack = Player:FindFirstChildOfClass("Backpack")
+
+    if not Character or not Backpack then
+        return nil
+    end
+
+    return Character:FindFirstChild("Gerobak")
+        or Backpack:FindFirstChild("Gerobak")
+end
+
+local function PrepareGerobak()
+    local Character = Player.Character
+
+    if not Character then
+        return false,"Karakter tidak ditemukan"
+    end
+
+    local Tool = GetGerobak()
+
+    if not Tool then
+        return false,"Gerobak tidak ditemukan"
+    end
+
+    if Tool.Parent ~= Character then
+        local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+
+        if not Humanoid then
+            return false,"Humanoid tidak ditemukan"
+        end
+
+        Humanoid:EquipTool(Tool)
+        task.wait(SPEED.AfterEquip)
+    end
+
+    if IsEtalaseOpen() then
+        return true
+    end
+
+    if os.clock() - LastOpenAttempt < SPEED.ReopenDelay then
+        return false,"Menunggu etalase terbuka..."
+    end
+
+    LastOpenAttempt = os.clock()
+    Status.Text = "Membuka ulang etalase..."
+
+    pcall(function()
+        Tool:Activate()
+    end)
+
+    local Started = os.clock()
+
+    repeat
+        if IsEtalaseOpen() then
+            Status.Text = "Etalase terbuka kembali"
+            return true
+        end
+
+        task.wait(SPEED.ReopenCheck)
+    until os.clock() - Started >= 1
+
+    return false,"Etalase belum terbuka, mencoba lagi..."
+end
+
+--==================================================
+-- MODE AKTIF
+--==================================================
+
+local function GetKinds()
+    local Kinds = {}
+
+    if F.Babi and F.Bahan then
+        if LastKind == "Babi" then
+            Kinds = {"Bahan","Babi"}
+        else
+            Kinds = {"Babi","Bahan"}
+        end
+
+    elseif F.Babi then
+        Kinds = {"Babi"}
+
+    elseif F.Bahan then
+        Kinds = {"Bahan"}
+    end
+
+    return Kinds
+end
+
+--==================================================
+-- WORKER UTAMA
+--==================================================
+
+local function AutoLoop()
+    while AnyRunning() do
+        local Ready,Reason = PrepareGerobak()
+
+        if not Ready then
+            Status.Text = Reason
+            task.wait(SPEED.Retry)
+            continue
+        end
+
+        local Data = GetEtalaseData()
+
+        if not Data then
+            Status.Text = "Gagal membaca data etalase"
+            task.wait(SPEED.DataFail)
+            continue
+        end
+
+        local Jumlah = #(Data.barang or {})
+        local Maks = tonumber(Data.maksJenis) or 9
+
+        if Jumlah >= Maks then
+            Status.Text = "Etalase penuh: "..Jumlah.."/"..Maks
+            task.wait(SPEED.FullWait)
+            continue
+        end
+
+        local Kinds = GetKinds()
+        local Success = false
+        local Message = "Tidak ada item tersedia"
+
+        for _,Kind in ipairs(Kinds) do
+            if not AnyRunning() then
+                break
+            end
+
+            if not IsEtalaseOpen() then
+                Message = "Etalase tertutup"
+                break
+            end
+
+            local Result,Reason2 = TaruhSatu(Data,Kind)
+
+            if Result then
+                Success = true
+                LastKind = Kind
+                break
+            else
+                Message = Reason2 or Message
+            end
+        end
+
+        if not Success then
+            Status.Text = Message
+            task.wait(SPEED.Retry)
+        end
+    end
+end
+
+local function StartWorker()
+    if WorkerRunning then return end
+
+    WorkerRunning = true
+
+    task.spawn(function()
+        while AnyRunning() do
+            local Success,Error = pcall(AutoLoop)
+
+            if not Success then
+                Status.Text = "Error: "..tostring(Error)
+                task.wait(SPEED.Retry)
+            end
+        end
+
+        WorkerRunning = false
+
+        if not AnyRunning() then
+            Status.Text = "Semua Auto dimatikan"
+        end
+    end)
+end
+
+--==================================================
+-- AUTO BUY: CARI OWNER LAPAK
+--==================================================
+
+local function GetPromptOwner(Prompt)
+    if not Prompt or Prompt.Name ~= "LihatDagangan" then
+        return nil
+    end
+
+    local Current = Prompt.Parent
+
+    for _ = 1,6 do
+        if not Current then break end
+
+        local Owner = Current:GetAttribute("OwnerUserId")
+
+        if Owner then
+            Owner = tonumber(Owner)
+
+            if Owner and Owner ~= Player.UserId then
+                return Owner
+            end
+        end
+
+        Current = Current.Parent
+    end
+
+    return nil
+end
+
+--==================================================
+-- AUTO BUY: SCAN LAPAK DI WORKSPACE
+--==================================================
+
+local function ScanLapak()
+    local Found = {}
+
+    for _,Object in ipairs(workspace:GetDescendants()) do
+        if not F.Buy then break end
+
+        if Object:IsA("ProximityPrompt")
+        and Object.Name == "LihatDagangan" then
+
+            local Owner = GetPromptOwner(Object)
+
+            if Owner then
+                Found[Owner] = true
+            end
+        end
+    end
+
+    return Found
+end
+
+--==================================================
+-- AUTO BUY: SALDO KOIN
+--==================================================
+
+local CachedCoinName
+
+local function GetBuyBalance()
+    local Leaderstats = Player:FindFirstChild("leaderstats")
+    if not Leaderstats then return 0 end
+
+    if not CachedCoinName then
+        CachedCoinName = "Koin"
+
+        local ConfigModule =
+            ReplicatedStorage:FindFirstChild("GameConfig")
+
+        if ConfigModule then
+            local OK,Config = pcall(require,ConfigModule)
+
+            if OK and Config
+            and Config.Economy
+            and Config.Economy.LeaderstatName then
+
+                CachedCoinName = Config.Economy.LeaderstatName
+            end
+        end
+    end
+
+    local Stat = Leaderstats:FindFirstChild(CachedCoinName)
+
+    return Stat and tonumber(Stat.Value) or 0
+end
+
+--==================================================
+-- AUTO BUY: REFRESH DAGANGAN
+--==================================================
+
+local function ReadSeller(UserId)
+    local Remote = GetLapakRemote()
+
+    if not Remote then
+        return nil
+    end
+
+    local OK,Data = pcall(function()
+        return Remote:InvokeServer("lihat",UserId)
+    end)
+
+    if OK and type(Data) == "table" and Data.ok then
+        return Data
+    end
+
+    return nil
+end
+
+--==================================================
+-- AUTO BUY: BELI MAX
+--==================================================
+
+local function BuySeller(UserId)
+    if not F.Buy then return end
+
+    local Remote = GetLapakRemote()
+
+    if not Remote then
+        Status.Text = "Remote lapak tidak ditemukan"
+        return
+    end
+
+    -- Baca stok terbaru dari server
+    local Data = ReadSeller(UserId)
+
+    if not Data then
+        Status.Text = "Gagal membaca dagangan: "..tostring(UserId)
+        return
+    end
+
+    local SellerName = tostring(Data.nama or UserId)
+    local Items = Data.barang or {}
+
+    if #Items == 0 then
+        Status.Text = "Lapak kosong: "..SellerName
+        return
+    end
+
+    for _,Item in ipairs(Items) do
+        if not F.Buy then break end
+
+        if type(Item) == "table"
+        and Item.id
+        and tonumber(Item.n)
+        and tonumber(Item.harga) then
+
+            local Stock = tonumber(Item.n)
+            local Price = tonumber(Item.harga)
+
+            if Stock > 0 and Price > 0 then
+                local Balance = GetBuyBalance()
+
+                -- Jumlah pembelian maksimum
+                local MaxAmount = math.min(
+                    Stock,
+                    math.floor(Balance / Price)
+                )
+
+                if MaxAmount > 0 then
+                    Status.Text =
+                        "Beli "..SellerName
+                        .." | "..tostring(Item.id)
+                        .." x"..MaxAmount
+
+                    local OK,Result = pcall(function()
+                        return Remote:InvokeServer(
+                            "beli",
+                            UserId,
+                            Item.id,
+                            MaxAmount,
+                            Price
+                        )
+                    end)
+
+                    if OK and type(Result) == "table"
+                    and Result.ok then
+
+                        Status.Text =
+                            "Berhasil beli "..tostring(Item.id)
+                            .." x"..MaxAmount
+                    else
+                        Status.Text =
+                            "Gagal beli: "..tostring(Item.id)
+                    end
+
+                    task.wait(SPEED.BuyAfter)
+                end
+            end
+        end
+    end
+end
+
+--==================================================
+-- AUTO BUY: WORKER UTAMA
+--==================================================
+
+local function AutoBuyLoop()
+    while F.Buy do
+        Status.Text = "Memindai lapak pemain..."
+
+        local Lapak = ScanLapak()
+        local Count = 0
+
+        for UserId in pairs(Lapak) do
+            if not F.Buy then break end
+
+            Count += 1
+
+            Status.Text =
+                "Memeriksa lapak "..tostring(UserId)
+
+            local OK,Error = pcall(function()
+                BuySeller(UserId)
+            end)
+
+            if not OK then
+                Status.Text = "Error Auto Buy: "..tostring(Error)
+                task.wait(SPEED.BuyError)
+            end
+        end
+
+        if Count == 0 then
+            Status.Text = "Belum ada lapak terdeteksi"
+        else
+            Status.Text =
+                "Scan selesai: "..Count.." lapak | Refresh..."
+        end
+
+        -- Scan ulang dan baca ulang stok server
+        task.wait(SPEED.BuyRefresh)
+    end
+
+    BuyWorkerRunning = false
+end
+
+local function StartBuyWorker()
+    if BuyWorkerRunning then return end
+
+    BuyWorkerRunning = true
+
+    task.spawn(function()
+        while F.Buy do
+            local OK,Error = pcall(AutoBuyLoop)
+
+            if not OK then
+                Status.Text = "Error Auto Buy: "..tostring(Error)
+                task.wait(SPEED.BuyError)
+            end
+        end
+
+        BuyWorkerRunning = false
+    end)
+end
+
+--==================================================
+-- AUTO BABI
+--==================================================
+
+BabiButton.Activated:Connect(function()
+    F.Babi = not F.Babi
+
+    if not F.Babi then
+        F.Semua = false
+    end
+
+    UpdateButtons()
+
+    if F.Babi then
+        Status.Text = "Auto Babi aktif"
+        StartWorker()
+    else
+        Status.Text = "Auto Babi dimatikan"
+    end
+end)
+
+--==================================================
+-- AUTO BAHAN
+--==================================================
+
+BahanButton.Activated:Connect(function()
+    F.Bahan = not F.Bahan
+
+    if not F.Bahan then
+        F.Semua = false
+    end
+
+    UpdateButtons()
+
+    if F.Bahan then
+        Status.Text = "Auto Bahan aktif"
+        StartWorker()
+    else
+        Status.Text = "Auto Bahan dimatikan"
+    end
+end)
+
+--==================================================
+-- AUTO SEMUANYA
+--==================================================
+
+SemuaButton.Activated:Connect(function()
+    F.Semua = not F.Semua
+
+    F.Babi = F.Semua
+    F.Bahan = F.Semua
+
+    UpdateButtons()
+
+    if F.Semua then
+        Status.Text = "Auto Semuanya aktif"
+        StartWorker()
+    else
+        Status.Text = "Semua Auto dimatikan"
+    end
+end)
+
+--==================================================
+-- AUTO BUY MAX TOGGLE
+--==================================================
+
+BuyButton.Activated:Connect(function()
+    F.Buy = not F.Buy
+
+    UpdateButtons()
+
+    if F.Buy then
+        Status.Text = "Auto Buy MAX aktif"
+        StartBuyWorker()
+    else
+        Status.Text = "Auto Buy dimatikan"
+    end
+end)
+
+--==================================================
+-- INITIALIZE
+--==================================================
+
+UpdateButtons()
